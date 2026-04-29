@@ -1,3 +1,94 @@
+HTML = '''
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Live Mapper Robot UI</title>
+    <style>
+        body { background: #222; color: #eee; font-family: sans-serif; margin: 0; }
+        #map { border: 2px solid #444; background: #111; display: block; margin: 20px auto; }
+        #controls { text-align: center; margin: 10px; }
+        #status { text-align: center; margin: 10px; font-size: 1.1em; }
+        .btn { background: #444; color: #fff; border: none; padding: 10px 18px; margin: 4px; border-radius: 6px; font-size: 1em; cursor: pointer; }
+        .btn:hover { background: #666; }
+        #keyboard { margin: 10px auto; width: 220px; }
+        .key { display: inline-block; width: 60px; height: 60px; line-height: 60px; background: #333; color: #fff; border-radius: 8px; margin: 4px; font-size: 2em; text-align: center; user-select: none; }
+        .key.active { background: #0a0; }
+    </style>
+</head>
+<body>
+    <h2 style="text-align:center;">Live Mapper Robot UI</h2>
+    <div id="status">Connecting...</div>
+    <canvas id="map" width="{{ MAP_W }}" height="{{ MAP_H }}"></canvas>
+    <div id="controls">
+        <button class="btn" onclick="sendCmd('save_map')">Save Map</button>
+        <button class="btn" onclick="sendCmd('clear_map')">Clear Map</button>
+        <button class="btn" onclick="sendCmd('relocalize')">Relocalize</button>
+    </div>
+    <div id="keyboard">
+        <div><span class="key" id="key-W">W</span></div>
+        <div><span class="key" id="key-A">A</span><span class="key" id="key-S">S</span><span class="key" id="key-D">D</span></div>
+    </div>
+    <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+    const map = document.getElementById('map');
+    const ctx = map.getContext('2d');
+    const status = document.getElementById('status');
+    const keys = { 'W': false, 'A': false, 'S': false, 'D': false };
+    let socket = io();
+    let lastMapVer = 0;
+
+    function drawMapBinary(data) {
+        let arr = new Uint8ClampedArray(data);
+        let img = new ImageData(arr, map.width, map.height);
+        ctx.putImageData(img, 0, 0);
+    }
+
+    socket.on('connect', () => {
+        status.textContent = 'Connected.';
+        socket.emit('get_map');
+    });
+    socket.on('disconnect', () => {
+        status.textContent = 'Disconnected.';
+    });
+    socket.on('status', msg => {
+        status.textContent = msg;
+    });
+    socket.on('map', (data) => {
+        if (data.ver && data.ver <= lastMapVer) return;
+        lastMapVer = data.ver || 0;
+        if (data.img) {
+            drawMapBinary(data.img.data);
+        } else if (data.img_bin) {
+            drawMapBinary(data.img_bin);
+        }
+    });
+
+    function sendCmd(cmd) {
+        socket.emit('cmd', {cmd: cmd});
+    }
+
+    // Keyboard teleop
+    document.addEventListener('keydown', e => {
+        let k = e.key.toUpperCase();
+        if (keys[k] !== undefined && !keys[k]) {
+            keys[k] = true;
+            document.getElementById('key-' + k).classList.add('active');
+            socket.emit('teleop', {key: k, state: 1});
+        }
+    });
+    document.addEventListener('keyup', e => {
+        let k = e.key.toUpperCase();
+        if (keys[k] !== undefined && keys[k]) {
+            keys[k] = false;
+            document.getElementById('key-' + k).classList.remove('active');
+            socket.emit('teleop', {key: k, state: 0});
+        }
+    });
+    </script>
+</body>
+</html>
+'''
 
 """
 live_mapper.py  (v4 - binary transfer + browser keyboard control)
