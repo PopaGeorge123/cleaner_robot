@@ -163,7 +163,7 @@ def mapping_thread():
                 'map': map_grid.flatten().tolist(),
                 'path': robot_path[-500:],
             })
-            time.sleep(0.2)
+            time.sleep(1.0)
         except Exception as e:
             print(f"[ERROR] Exception in mapping loop: {e}")
 
