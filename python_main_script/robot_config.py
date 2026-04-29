@@ -28,7 +28,7 @@ ROBOT_RADIUS    = 0.22    # m  (for collision / inflation, from nav2_params.yaml
 # ── LD06 Lidar (replaces the generic RPLidar in the original project) ──────────
 # Hardware specs:  https://www.ldrobot.com/product/detail/10
 LIDAR_MODEL          = "LD06"
-LIDAR_SERIAL_PORT    = "/dev/ttyUSB0"   # change to your port, e.g. /dev/ttyUSB1
+LIDAR_SERIAL_PORT    = "/dev/ttyUSB1"   # change to your port, e.g. /dev/ttyUSB1
 LIDAR_BAUD_RATE      = 230400
 LIDAR_SCAN_FREQ_HZ   = 10              # nominal scan frequency (Hz)
 LIDAR_SAMPLES        = 360             # points per full 360° scan
