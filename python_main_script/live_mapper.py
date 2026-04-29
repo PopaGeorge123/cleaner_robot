@@ -40,7 +40,7 @@ from robot_config import (
 
 # ── Flask app setup ───────────────────────────────────────────────
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
 
 # ── Map and robot state ───────────────────────────────────────────
 MAP_W, MAP_H = 200, 200  # 10m x 10m at 0.05m/px
