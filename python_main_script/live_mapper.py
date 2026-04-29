@@ -40,7 +40,7 @@ from robot_config import (
 
 # ── Flask app setup ───────────────────────────────────────────────
 app = Flask(__name__)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="eventlet")
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
 
 # ── Map and robot state ───────────────────────────────────────────
 MAP_W, MAP_H = 200, 200  # 10m x 10m at 0.05m/px
@@ -115,44 +115,57 @@ def index():
 
 # ── Mapping thread ────────────────────────────────────────────────
 def mapping_thread():
-    lidar = LD06Driver(port=LIDAR_SERIAL_PORT, baud_rate=LIDAR_BAUD_RATE)
-    arduino = ArduinoDriver(port=ARDUINO_SERIAL_PORT)
-    lidar.start()
-    arduino.start()
+    try:
+        print("[INFO] Starting Lidar driver...")
+        lidar = LD06Driver(port=LIDAR_SERIAL_PORT, baud_rate=LIDAR_BAUD_RATE)
+        print("[INFO] Starting Arduino driver...")
+        arduino = ArduinoDriver(port=ARDUINO_SERIAL_PORT)
+        lidar.start()
+        arduino.start()
+    except Exception as e:
+        print(f"[ERROR] Failed to start drivers: {e}")
+        return
     global map_grid, robot_path
     while True:
-        # Get robot pose
-        pose = arduino.odometry
-        x, y, theta = pose.x, pose.y, pose.theta
-        robot_path.append((int(MAP_ORIGIN_X / MAP_RESOLUTION + x / MAP_RESOLUTION),
-                           int(MAP_ORIGIN_Y / MAP_RESOLUTION - y / MAP_RESOLUTION)))
-        # Get lidar scan
-        scan = lidar.get_scan()
-        # Fade old points for live effect
-        map_grid[map_grid > 0] -= 1
-        if scan is not None:
-            print(f"[DEBUG] Scan received: {len(scan)} points")
-            points_written = 0
-            for angle, dist, *_ in scan:
-                if dist < 0.05 or dist > 8.0:
-                    continue
-                # Convert to world coordinates
-                lx = x + dist * np.cos(theta + np.deg2rad(angle))
-                ly = y + dist * np.sin(theta + np.deg2rad(angle))
-                mx = int(MAP_ORIGIN_X / MAP_RESOLUTION + lx / MAP_RESOLUTION)
-                my = int(MAP_ORIGIN_Y / MAP_RESOLUTION - ly / MAP_RESOLUTION)
-                if 0 <= mx < MAP_W and 0 <= my < MAP_H:
-                    map_grid[my, mx] = 255
-                    points_written += 1
-            print(f"[DEBUG] Points written to map: {points_written}")
-        else:
-            print("[DEBUG] No scan received")
-        # Send to clients
-        socketio.emit('map_update', {
-            'map': map_grid.flatten().tolist(),
-            'path': robot_path[-500:],
-        })
-        time.sleep(0.2)
+        try:
+            # Get robot pose
+            pose = arduino.odometry
+            x, y, theta = pose.x, pose.y, pose.theta
+            robot_path.append((int(MAP_ORIGIN_X / MAP_RESOLUTION + x / MAP_RESOLUTION),
+                               int(MAP_ORIGIN_Y / MAP_RESOLUTION - y / MAP_RESOLUTION)))
+            # Get lidar scan
+            scan = None
+            try:
+                scan = lidar.get_scan()
+            except Exception as e:
+                print(f"[ERROR] Lidar scan failed: {e}")
+            if scan is not None:
+                # Fade old points for live effect
+                map_grid[map_grid > 0] -= 1
+                print(f"[DEBUG] Scan received: {len(scan)} points")
+                points_written = 0
+                for angle, dist, *_ in scan:
+                    if dist < 0.05 or dist > 8.0:
+                        continue
+                    # Convert to world coordinates
+                    lx = x + dist * np.cos(theta + np.deg2rad(angle))
+                    ly = y + dist * np.sin(theta + np.deg2rad(angle))
+                    mx = int(MAP_ORIGIN_X / MAP_RESOLUTION + lx / MAP_RESOLUTION)
+                    my = int(MAP_ORIGIN_Y / MAP_RESOLUTION - ly / MAP_RESOLUTION)
+                    if 0 <= mx < MAP_W and 0 <= my < MAP_H:
+                        map_grid[my, mx] = 255
+                        points_written += 1
+                print(f"[DEBUG] Points written to map: {points_written}")
+            else:
+                print("[DEBUG] No scan received")
+            # Send to clients
+            socketio.emit('map_update', {
+                'map': map_grid.flatten().tolist(),
+                'path': robot_path[-500:],
+            })
+            time.sleep(0.2)
+        except Exception as e:
+            print(f"[ERROR] Exception in mapping loop: {e}")
 
 
 # ── Save map handler ─────────────────────────────────────────────
