@@ -115,7 +115,7 @@ def index():
 
 # ── Mapping thread ────────────────────────────────────────────────
 def mapping_thread():
-    lidar = LD06Driver(port=LIDAR_SERIAL_PORT, baud=LIDAR_BAUD_RATE)
+    lidar = LD06Driver(port=LIDAR_SERIAL_PORT, baud_rate=LIDAR_BAUD_RATE)
     arduino = ArduinoDriver(port=ARDUINO_SERIAL_PORT)
     lidar.start()
     arduino.start()
@@ -128,8 +128,12 @@ def mapping_thread():
                            int(MAP_ORIGIN_Y / MAP_RESOLUTION - y / MAP_RESOLUTION)))
         # Get lidar scan
         scan = lidar.get_scan()
+        # Fade old points for live effect
+        map_grid[map_grid > 0] -= 1
         if scan is not None:
-            for angle, dist in scan:
+            print(f"[DEBUG] Scan received: {len(scan)} points")
+            points_written = 0
+            for angle, dist, *_ in scan:
                 if dist < 0.05 or dist > 8.0:
                     continue
                 # Convert to world coordinates
@@ -138,7 +142,11 @@ def mapping_thread():
                 mx = int(MAP_ORIGIN_X / MAP_RESOLUTION + lx / MAP_RESOLUTION)
                 my = int(MAP_ORIGIN_Y / MAP_RESOLUTION - ly / MAP_RESOLUTION)
                 if 0 <= mx < MAP_W and 0 <= my < MAP_H:
-                    map_grid[my, mx] = 100
+                    map_grid[my, mx] = 255
+                    points_written += 1
+            print(f"[DEBUG] Points written to map: {points_written}")
+        else:
+            print("[DEBUG] No scan received")
         # Send to clients
         socketio.emit('map_update', {
             'map': map_grid.flatten().tolist(),
@@ -158,13 +166,7 @@ def handle_save_map(_):
             origin=(-MAP_ORIGIN_X, -MAP_ORIGIN_Y, 0.0)
         )
         fname = f"map_{int(time.time())}"
-        grid.save_map(fname)
-        socketio.emit('save_status', {'msg': f'Harta salvată: {fname}.pgm/.yaml'})
+        grid.save(fname)
+        socketio.emit('save_status', {'msg': f'Harta a fost salvată: {fname}'})
     except Exception as e:
         socketio.emit('save_status', {'msg': f'Eroare la salvare: {e}'})
-
-# ── Main ─────────────────────────────────────────────────────────
-if __name__ == '__main__':
-    threading.Thread(target=mapping_thread, daemon=True).start()
-    print("Open http://<raspberry-pi-ip>:5000 in your browser!")
-    socketio.run(app, host='0.0.0.0', port=5000)
