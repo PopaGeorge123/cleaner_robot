@@ -141,7 +141,7 @@ def mapping_thread():
                 print(f"[ERROR] Lidar scan failed: {e}")
             if scan is not None:
                 # Fade old points for live effect
-                map_grid[map_grid > 0] -= 1
+                map_grid[map_grid > 10] -= 3   # gentler fade, keeps points longer
                 print(f"[DEBUG] Scan received: {len(scan)} points")
                 points_written = 0
                 for angle, dist, *_ in scan:
@@ -163,7 +163,6 @@ def mapping_thread():
                 'map': map_grid.flatten().tolist(),
                 'path': robot_path[-500:],
             })
-            time.sleep(1.0)
         except Exception as e:
             print(f"[ERROR] Exception in mapping loop: {e}")
 

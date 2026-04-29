@@ -256,15 +256,68 @@ def mode_ball_tracker() -> None:
 # ── Mode 5: Keyboard teleop ───────────────────────────────────────────────────
 
 def mode_keyboard_teleop() -> None:
-    print("\n── Keyboard Teleoperation ──")
-    from diff_drive         import DiffDriveController, RobotState
+    print("\n── Keyboard Teleoperation (REAL ROBOT) ──")
+    if not _import_check('serial'):
+        print("  ✗ pyserial not installed.  Run: pip install pyserial")
+        return
+
+    from robot_config import ARDUINO_SERIAL_PORT
+    port = input(f"  Arduino serial port [{ARDUINO_SERIAL_PORT}]: ").strip() or ARDUINO_SERIAL_PORT
+
+    from arduino_driver import ArduinoDriver
     from joystick_controller import KeyboardController
 
-    robot = DiffDriveController(initial_state=RobotState(0.0, 0.0, 0.0))
-    ctrl  = KeyboardController(robot)
-    ctrl.run()
+    driver = ArduinoDriver(port=port)
+    driver.start()
+    driver.reset_encoders()
 
+    print("  WASD to move, SPACE to stop, Ctrl+C to quit")
+    print("  (pynput required: pip install pynput)")
 
+    try:
+        from pynput import keyboard as kb
+        import time
+
+        v, w = 0.0, 0.0
+        running = True
+
+        def on_press(key):
+            nonlocal v, w
+            try:
+                k = key.char.lower() if hasattr(key, 'char') and key.char else None
+            except AttributeError:
+                k = None
+            if k == 'w' or key == kb.Key.up:    v = min(0.20, v + 0.05)
+            elif k == 's' or key == kb.Key.down: v = max(-0.20, v - 0.05)
+            elif k == 'a' or key == kb.Key.left: w = min(1.0, w + 0.1)
+            elif k == 'd' or key == kb.Key.right: w = max(-1.0, w - 0.1)
+            elif key == kb.Key.space: v = 0.0; w = 0.0
+
+        def on_release(key):
+            nonlocal running
+            if key == kb.Key.esc:
+                running = False
+                return False
+
+        listener = kb.Listener(on_press=on_press, on_release=on_release)
+        listener.start()
+
+        while running:
+            driver.set_velocity(v, w)
+            pose = driver.odometry
+            print(f"\r  v={v:+.2f}m/s  w={w:+.2f}rad/s  "
+                  f"x={pose.x:+.2f}  y={pose.y:+.2f}", end='', flush=True)
+            time.sleep(0.05)
+
+    except ImportError:
+        print("  pynput not found, install it: pip install pynput")
+    except KeyboardInterrupt:
+        pass
+    finally:
+        driver.stop()
+        driver.close()
+        print("\n  Stopped.")
+        
 # ── Mode 6: Gamepad teleop ────────────────────────────────────────────────────
 
 def mode_gamepad_teleop() -> None:
