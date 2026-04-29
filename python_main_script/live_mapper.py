@@ -154,6 +154,7 @@ def mapping_thread():
         })
         time.sleep(0.2)
 
+
 # ── Save map handler ─────────────────────────────────────────────
 from map_loader import OccupancyGrid
 @socketio.on('save_map')
@@ -170,3 +171,10 @@ def handle_save_map(_):
         socketio.emit('save_status', {'msg': f'Harta a fost salvată: {fname}'})
     except Exception as e:
         socketio.emit('save_status', {'msg': f'Eroare la salvare: {e}'})
+
+
+# ── Main entrypoint ─────────────────────────────────────────────
+if __name__ == "__main__":
+    t = threading.Thread(target=mapping_thread, daemon=True)
+    t.start()
+    socketio.run(app, host="0.0.0.0", port=5000)
