@@ -1,3 +1,5 @@
+import threading
+import time
 
 # ── LD06Driver: Lidar driver for LD06 2D Lidar ───────────────────────────────
 import serial
