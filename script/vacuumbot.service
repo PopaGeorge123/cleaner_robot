@@ -1,0 +1,20 @@
+[Unit]
+Description=VacuumBot Control Server
+After=network.target
+Wants=network.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/vacuumbot/backend
+ExecStart=/home/pi/vacuumbot/venv/bin/python main.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+Environment=ARDUINO_PORT=/dev/ttyUSB0
+Environment=LIDAR_PORT=/dev/ttyUSB1
+Environment=WEB_PORT=5000
+
+[Install]
+WantedBy=multi-user.target

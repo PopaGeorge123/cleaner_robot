@@ -1,0 +1,1060 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VacuumBot Control</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap');
+
+  :root {
+    --bg:        #0a0c10;
+    --surface:   #111318;
+    --surface2:  #181c23;
+    --border:    #252a35;
+    --accent:    #00d4aa;
+    --accent2:   #0066ff;
+    --warn:      #ff6b35;
+    --danger:    #ff3355;
+    --text:      #dde3f0;
+    --muted:     #5a6680;
+    --free:      #1a3a2a;
+    --occupied:  #3d1a1a;
+    --cleaned:   #0d2e3a;
+    --robot:     #00d4aa;
+    --grid-line: #1a1f2a;
+    --scan-col:  rgba(0, 212, 170, 0.15);
+    --font-mono: 'IBM Plex Mono', monospace;
+    --font-sans: 'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    min-height: 100vh;
+    display: grid;
+    grid-template-rows: 48px 1fr;
+    grid-template-columns: 1fr 280px;
+    gap: 0;
+    overflow: hidden;
+    height: 100vh;
+  }
+
+  /* ── Header ── */
+  header {
+    grid-column: 1 / -1;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    gap: 20px;
+  }
+  .logo {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .logo svg { width: 22px; height: 22px; }
+  .status-bar {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  .status-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    border-radius: 12px;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .status-pill.ok { border-color: var(--accent); color: var(--accent); }
+  .status-pill.err { border-color: var(--danger); color: var(--danger); }
+  .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+  .status-pill.ok .status-dot { animation: pulse 1.5s infinite; }
+  @keyframes pulse {
+    0%,100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+  .mode-badge {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    transition: all 0.3s;
+  }
+  .mode-badge.mapping   { border-color: #ffaa00; color: #ffaa00; }
+  .mode-badge.navigating{ border-color: var(--accent2); color: var(--accent2); }
+  .mode-badge.cleaning  { border-color: var(--accent); color: var(--accent); }
+
+  /* ── Map Panel ── */
+  #map-panel {
+    position: relative;
+    overflow: hidden;
+    background: var(--bg);
+    border-right: 1px solid var(--border);
+  }
+  #map-canvas {
+    display: block;
+    cursor: crosshair;
+  }
+  .map-overlay {
+    position: absolute;
+    top: 12px; left: 12px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    pointer-events: none;
+    line-height: 1.6;
+  }
+  .map-overlay span { color: var(--text); }
+  .click-hint {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    padding: 4px 12px;
+    border-radius: 8px;
+    white-space: nowrap;
+    pointer-events: none;
+    transition: opacity 0.3s;
+  }
+
+  /* ── Sidebar ── */
+  #sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow-y: auto;
+    background: var(--surface);
+  }
+  #sidebar::-webkit-scrollbar { width: 4px; }
+  #sidebar::-webkit-scrollbar-track { background: transparent; }
+  #sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  .panel {
+    border-bottom: 1px solid var(--border);
+    padding: 14px 16px;
+  }
+  .panel-title {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .panel-title::before {
+    content: '';
+    display: inline-block;
+    width: 3px; height: 10px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+
+  /* Pose display */
+  .pose-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  .pose-cell {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    text-align: center;
+  }
+  .pose-label {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .pose-value {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--accent);
+    margin-top: 2px;
+  }
+
+  /* Buttons */
+  .btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .btn-row {
+    display: flex;
+    gap: 6px;
+  }
+  .btn {
+    flex: 1;
+    padding: 9px 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-align: center;
+    letter-spacing: 0.03em;
+    outline: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .btn:hover:not(:disabled) {
+    background: var(--border);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn:active:not(:disabled) {
+    transform: scale(0.97);
+  }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+  .btn.primary {
+    background: rgba(0, 212, 170, 0.1);
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .btn.primary:hover:not(:disabled) {
+    background: rgba(0, 212, 170, 0.2);
+  }
+  .btn.danger {
+    background: rgba(255, 51, 85, 0.08);
+    border-color: var(--danger);
+    color: var(--danger);
+  }
+  .btn.danger:hover:not(:disabled) {
+    background: rgba(255, 51, 85, 0.18);
+  }
+  .btn.warn {
+    background: rgba(255, 107, 53, 0.08);
+    border-color: var(--warn);
+    color: var(--warn);
+  }
+  .btn.warn:hover:not(:disabled) {
+    background: rgba(255, 107, 53, 0.18);
+  }
+  .btn.active-state {
+    background: rgba(0, 102, 255, 0.15);
+    border-color: var(--accent2);
+    color: var(--accent2);
+  }
+
+  /* D-pad manual control */
+  .dpad {
+    display: grid;
+    grid-template-areas:
+      ". up ."
+      "left stop right"
+      ". down .";
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 4px;
+  }
+  .dpad-btn {
+    aspect-ratio: 1;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface2);
+    color: var(--text);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.1s;
+    outline: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  .dpad-btn:hover { background: var(--border); border-color: var(--accent); color: var(--accent); }
+  .dpad-btn:active { transform: scale(0.92); background: rgba(0,212,170,0.15); }
+  .dpad-btn.stop-btn { color: var(--danger); border-color: var(--danger); }
+  [data-area="up"]    { grid-area: up; }
+  [data-area="left"]  { grid-area: left; }
+  [data-area="stop"]  { grid-area: stop; }
+  [data-area="right"] { grid-area: right; }
+  [data-area="down"]  { grid-area: down; }
+
+  /* Speed slider */
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  .slider-label {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+    min-width: 40px;
+  }
+  input[type=range] {
+    flex: 1;
+    -webkit-appearance: none;
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    outline: none;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+  .slider-val {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--accent);
+    min-width: 28px;
+    text-align: right;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .legend-swatch {
+    width: 14px; height: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.08);
+    flex-shrink: 0;
+  }
+
+  /* Log */
+  #log-panel {
+    flex: 1;
+    min-height: 80px;
+    max-height: 160px;
+  }
+  #log-list {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    line-height: 1.7;
+    color: var(--muted);
+    overflow-y: auto;
+    max-height: 120px;
+  }
+  #log-list::-webkit-scrollbar { width: 3px; }
+  #log-list::-webkit-scrollbar-thumb { background: var(--border); }
+  .log-entry { display: flex; gap: 6px; }
+  .log-time { color: var(--border); min-width: 45px; }
+  .log-info  { color: var(--accent); }
+  .log-warn  { color: var(--warn); }
+  .log-err   { color: var(--danger); }
+
+  /* Toast notification */
+  #toast {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    padding: 8px 18px;
+    border-radius: 8px;
+    transition: transform 0.3s;
+    pointer-events: none;
+    z-index: 100;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+
+  /* Overlay when no connection */
+  #conn-overlay {
+    position: fixed; inset: 0;
+    background: rgba(10,12,16,0.92);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 200;
+    flex-direction: column;
+    gap: 12px;
+    font-family: var(--font-mono);
+  }
+  #conn-overlay h2 { color: var(--danger); font-size: 18px; }
+  #conn-overlay p  { color: var(--muted); font-size: 12px; }
+  .spinner {
+    width: 32px; height: 32px;
+    border: 3px solid var(--border);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<!-- Connection overlay -->
+<div id="conn-overlay">
+  <div class="spinner"></div>
+  <h2>Connecting…</h2>
+  <p>Waiting for VacuumBot server</p>
+</div>
+
+<!-- Header -->
+<header>
+  <div class="logo">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+      <circle cx="12" cy="12" r="9"/>
+      <circle cx="12" cy="12" r="3"/>
+      <path d="M12 3v2M12 19v2M3 12h2M19 12h2"/>
+    </svg>
+    VACUUMBOT
+  </div>
+  <div style="font-family:var(--font-mono);font-size:11px;color:var(--muted);">LD06 + Arduino L298</div>
+  <div class="status-bar">
+    <div class="status-pill" id="pill-arduino">
+      <div class="status-dot"></div>ARDUINO
+    </div>
+    <div class="status-pill" id="pill-lidar">
+      <div class="status-dot"></div>LIDAR
+    </div>
+    <div class="mode-badge" id="mode-badge">IDLE</div>
+  </div>
+</header>
+
+<!-- Map -->
+<div id="map-panel">
+  <canvas id="map-canvas"></canvas>
+  <div class="map-overlay" id="map-overlay">
+    X: <span id="ov-x">0.00</span> m &nbsp;
+    Y: <span id="ov-y">0.00</span> m &nbsp;
+    θ: <span id="ov-yaw">0.0</span>°
+  </div>
+  <div class="click-hint" id="click-hint">Click map to navigate · Right-click to clear goal</div>
+</div>
+
+<!-- Sidebar -->
+<div id="sidebar">
+
+  <!-- Pose -->
+  <div class="panel">
+    <div class="panel-title">Pose</div>
+    <div class="pose-grid">
+      <div class="pose-cell"><div class="pose-label">X (m)</div><div class="pose-value" id="pose-x">0.00</div></div>
+      <div class="pose-cell"><div class="pose-label">Y (m)</div><div class="pose-value" id="pose-y">0.00</div></div>
+      <div class="pose-cell"><div class="pose-label">YAW (°)</div><div class="pose-value" id="pose-yaw">0.0</div></div>
+    </div>
+  </div>
+
+  <!-- Mapping -->
+  <div class="panel">
+    <div class="panel-title">Mapping</div>
+    <div class="btn-group">
+      <div class="btn-row">
+        <button class="btn primary" id="btn-start-map">▶ Start Mapping</button>
+        <button class="btn warn"    id="btn-stop-map" disabled>■ Save Map</button>
+      </div>
+      <div class="btn-row">
+        <button class="btn"         id="btn-reset-pose">⌖ Reset Pose</button>
+        <button class="btn danger"  id="btn-clear-map">✕ Clear Map</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Cleaning -->
+  <div class="panel">
+    <div class="panel-title">Cleaning</div>
+    <div class="btn-group">
+      <button class="btn primary" id="btn-start-clean">⬛ Start Zigzag Clean</button>
+      <button class="btn danger"  id="btn-stop-all">⏹ Stop All</button>
+    </div>
+  </div>
+
+  <!-- Manual -->
+  <div class="panel">
+    <div class="panel-title">Manual Drive</div>
+    <div class="dpad">
+      <button class="dpad-btn" data-area="up"    id="dpad-fwd">▲</button>
+      <button class="dpad-btn" data-area="left"  id="dpad-left">◀</button>
+      <button class="dpad-btn stop-btn" data-area="stop" id="dpad-stop">■</button>
+      <button class="dpad-btn" data-area="right" id="dpad-right">▶</button>
+      <button class="dpad-btn" data-area="down"  id="dpad-back">▼</button>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Speed</span>
+      <input type="range" id="speed-slider" min="5" max="60" value="20">
+      <span class="slider-val" id="speed-val">20</span>
+    </div>
+  </div>
+
+  <!-- Legend -->
+  <div class="panel">
+    <div class="panel-title">Legend</div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-swatch" style="background:#0d1f17;border-color:#1a4030"></div>Free space</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#3d1515;border-color:#7a2020"></div>Obstacle</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#071c26;border-color:#0d4060"></div>Cleaned</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#00d4aa;border-color:#00d4aa"></div>Robot</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:rgba(0,212,170,0.15);border-color:rgba(0,212,170,0.3)"></div>Lidar scan</div>
+      <div class="legend-item"><div class="legend-swatch" style="background:#ff6b35;border-color:#ff6b35"></div>Goal</div>
+    </div>
+  </div>
+
+  <!-- Log -->
+  <div class="panel" id="log-panel">
+    <div class="panel-title">Activity Log</div>
+    <div id="log-list"></div>
+  </div>
+
+</div>
+
+<div id="toast"></div>
+
+<script>
+// ── Config ────────────────────────────────────────────────────────────────────
+const WS_URL  = `ws://${location.hostname}:${location.port || 5000}/ws`;
+const MAP_RES = 0.05;   // m/cell — must match backend
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let mapData = null;   // {width, height, resolution, origin_x, origin_y, grid, cleaned}
+let robotState = {
+  x: 0, y: 0, yaw: 0,
+  mode: 'idle',
+  map_saved: false,
+  arduino_ok: false,
+  lidar_ok: false,
+  scan: [],
+};
+let goalCell  = null;   // {cx, cy} in grid coords
+let ws        = null;
+let wsReady   = false;
+
+// Rendering state
+let viewOffX = 0, viewOffY = 0, viewScale = 4;  // px per cell
+let isDragging = false, dragStartX = 0, dragStartY = 0, dragOffX = 0, dragOffY = 0;
+
+// Manual drive hold state
+const dpadActive = {};
+
+// ── Canvas setup ──────────────────────────────────────────────────────────────
+const canvas  = document.getElementById('map-canvas');
+const ctx     = canvas.getContext('2d');
+let mapCanvas = null;   // off-screen for map layer
+let mapCtx    = null;
+let mapDirty  = true;
+
+function resizeCanvas() {
+  const panel = document.getElementById('map-panel');
+  canvas.width  = panel.clientWidth;
+  canvas.height = panel.clientHeight;
+  draw();
+}
+window.addEventListener('resize', resizeCanvas);
+
+// ── WebSocket ─────────────────────────────────────────────────────────────────
+function connectWS() {
+  ws = new WebSocket(WS_URL);
+  ws.onopen = () => {
+    wsReady = true;
+    document.getElementById('conn-overlay').style.display = 'none';
+    addLog('Connected to VacuumBot server', 'info');
+  };
+  ws.onclose = () => {
+    wsReady = false;
+    document.getElementById('conn-overlay').style.display = 'flex';
+    addLog('Connection lost — reconnecting…', 'warn');
+    setTimeout(connectWS, 2000);
+  };
+  ws.onerror = () => {
+    addLog('WebSocket error', 'err');
+  };
+  ws.onmessage = (evt) => {
+    const msg = JSON.parse(evt.data);
+    if (msg.type === 'state') handleStateMsg(msg);
+    else if (msg.type === 'map') handleMapMsg(msg);
+  };
+}
+
+function send(obj) {
+  if (wsReady && ws.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify(obj));
+  }
+}
+
+// ── Message handlers ──────────────────────────────────────────────────────────
+function handleStateMsg(msg) {
+  const prevMode = robotState.mode;
+  robotState = { ...robotState, ...msg };
+
+  // UI updates
+  document.getElementById('pose-x').textContent   = msg.x.toFixed(3);
+  document.getElementById('pose-y').textContent   = msg.y.toFixed(3);
+  document.getElementById('pose-yaw').textContent = (msg.yaw * 180 / Math.PI).toFixed(1);
+  document.getElementById('ov-x').textContent     = msg.x.toFixed(3);
+  document.getElementById('ov-y').textContent     = msg.y.toFixed(3);
+  document.getElementById('ov-yaw').textContent   = (msg.yaw * 180 / Math.PI).toFixed(1);
+
+  // Mode badge
+  const badge = document.getElementById('mode-badge');
+  badge.textContent = msg.mode.toUpperCase();
+  badge.className   = 'mode-badge ' + msg.mode;
+
+  // Hardware pills
+  const pa = document.getElementById('pill-arduino');
+  pa.className = 'status-pill ' + (msg.arduino_ok ? 'ok' : 'err');
+  const pl = document.getElementById('pill-lidar');
+  pl.className = 'status-pill ' + (msg.lidar_ok ? 'ok' : 'err');
+
+  // Button states
+  const mapping = msg.mode === 'mapping';
+  const busy    = msg.mode !== 'idle';
+  document.getElementById('btn-start-map').disabled   = busy || msg.map_saved;
+  document.getElementById('btn-stop-map').disabled    = !mapping;
+  document.getElementById('btn-start-clean').disabled = busy || !msg.map_saved;
+
+  if (prevMode !== msg.mode) {
+    addLog(`Mode → ${msg.mode}`, 'info');
+  }
+
+  draw();
+}
+
+function handleMapMsg(msg) {
+  if (!mapData ||
+      mapData.width   !== msg.width  ||
+      mapData.height  !== msg.height) {
+    // Init view centred on map origin
+    const panel = document.getElementById('map-panel');
+    viewOffX = panel.clientWidth  / 2 - msg.origin_x * viewScale;
+    viewOffY = panel.clientHeight / 2 - msg.origin_y * viewScale;
+  }
+  mapData   = msg;
+  mapDirty  = true;
+  buildMapCache();
+  draw();
+}
+
+// ── Off-screen map tile cache ─────────────────────────────────────────────────
+function buildMapCache() {
+  if (!mapData) return;
+  const W = mapData.width;
+  const H = mapData.height;
+
+  if (!mapCanvas || mapCanvas.width !== W || mapCanvas.height !== H) {
+    mapCanvas = new OffscreenCanvas(W, H);
+    mapCtx    = mapCanvas.getContext('2d');
+  }
+
+  const img  = mapCtx.createImageData(W, H);
+  const data = img.data;
+  const g    = mapData.grid;
+  const c    = mapData.cleaned;
+
+  for (let i = 0; i < W * H; i++) {
+    const cell    = g[i];
+    const cleaned = c[i];
+    let r, gr, b;
+    if (cell === 0) {           // unknown
+      r = 10; gr = 12; b = 16;
+    } else if (cell === 1) {    // free
+      if (cleaned) {
+        r = 7; gr = 30; b = 44;
+      } else {
+        r = 13; gr = 31; b = 22;
+      }
+    } else {                    // occupied
+      r = 61; gr = 21; b = 21;
+    }
+    const p = i * 4;
+    data[p]   = r;
+    data[p+1] = gr;
+    data[p+2] = b;
+    data[p+3] = 255;
+  }
+  mapCtx.putImageData(img, 0, 0);
+  mapDirty = false;
+}
+
+// ── Main draw loop ─────────────────────────────────────────────────────────────
+let animFrame = null;
+function draw() {
+  if (animFrame) return;
+  animFrame = requestAnimationFrame(_draw);
+}
+
+function _draw() {
+  animFrame = null;
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#0a0c10';
+  ctx.fillRect(0, 0, W, H);
+
+  if (!mapData) return;
+
+  const S   = viewScale;
+  const ox  = viewOffX;
+  const oy  = viewOffY;
+
+  // Draw off-screen map (nearest-neighbour upscale)
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(mapCanvas, ox, oy, mapData.width * S, mapData.height * S);
+  ctx.restore();
+
+  // Grid lines (subtle)
+  if (S >= 6) {
+    ctx.strokeStyle = 'rgba(26,31,42,0.6)';
+    ctx.lineWidth = 0.5;
+    const startCol = Math.max(0, Math.floor(-ox / S));
+    const endCol   = Math.min(mapData.width,  Math.ceil((W - ox) / S));
+    const startRow = Math.max(0, Math.floor(-oy / S));
+    const endRow   = Math.min(mapData.height, Math.ceil((H - oy) / S));
+    for (let c = startCol; c <= endCol; c++) {
+      ctx.beginPath();
+      ctx.moveTo(ox + c * S, oy + startRow * S);
+      ctx.lineTo(ox + c * S, oy + endRow   * S);
+      ctx.stroke();
+    }
+    for (let r = startRow; r <= endRow; r++) {
+      ctx.beginPath();
+      ctx.moveTo(ox + startCol * S, oy + r * S);
+      ctx.lineTo(ox + endCol   * S, oy + r * S);
+      ctx.stroke();
+    }
+  }
+
+  // Lidar scan
+  if (robotState.scan && robotState.scan.length > 0 && mapData) {
+    const rx  = robotState.x;
+    const ry  = robotState.y;
+    const ryaw = robotState.yaw;
+    const ox2 = mapData.origin_x;
+    const oy2 = mapData.origin_y;
+    const res = mapData.resolution;
+
+    const robotPxX = ox + (rx / res + ox2) * S;
+    const robotPxY = oy + (ry / res + oy2) * S;
+
+    ctx.save();
+    ctx.fillStyle = 'rgba(0, 212, 170, 0.18)';
+    ctx.strokeStyle = 'rgba(0, 212, 170, 0.5)';
+    ctx.lineWidth = 0.8;
+    for (const pt of robotState.scan) {
+      const a = pt.a * Math.PI / 180 + ryaw;
+      const d = pt.d;
+      const px = robotPxX + (d / res * S) * Math.cos(a);
+      const py = robotPxY + (d / res * S) * Math.sin(a);
+      ctx.beginPath();
+      ctx.moveTo(robotPxX, robotPxY);
+      ctx.lineTo(px, py);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(px, py, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  // Goal marker
+  if (goalCell && mapData) {
+    const gx = ox + (goalCell.cx + 0.5) * S;
+    const gy = oy + (goalCell.cy + 0.5) * S;
+    ctx.save();
+    ctx.strokeStyle = '#ff6b35';
+    ctx.lineWidth   = 2;
+    const r = Math.max(6, S * 0.8);
+    ctx.beginPath();
+    ctx.moveTo(gx - r, gy); ctx.lineTo(gx + r, gy);
+    ctx.moveTo(gx, gy - r); ctx.lineTo(gx, gy + r);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(gx, gy, r * 0.4, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,107,53,0.3)';
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // Robot body
+  if (mapData) {
+    const rx  = robotState.x;
+    const ry  = robotState.y;
+    const ryaw = robotState.yaw;
+    const ox2 = mapData.origin_x;
+    const oy2 = mapData.origin_y;
+    const res = mapData.resolution;
+    const rpx = ox + (rx / res + ox2) * S;
+    const rpy = oy + (ry / res + oy2) * S;
+    const rad = Math.max(8, S * 1.5);
+
+    ctx.save();
+    ctx.translate(rpx, rpy);
+    ctx.rotate(ryaw);
+
+    // Body
+    ctx.beginPath();
+    ctx.arc(0, 0, rad, 0, Math.PI * 2);
+    ctx.fillStyle   = 'rgba(0, 212, 170, 0.15)';
+    ctx.strokeStyle = '#00d4aa';
+    ctx.lineWidth   = 2;
+    ctx.fill();
+    ctx.stroke();
+
+    // Heading arrow
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(rad * 1.2, 0);
+    ctx.strokeStyle = '#00d4aa';
+    ctx.lineWidth   = 2;
+    ctx.stroke();
+
+    // Arrow head
+    ctx.beginPath();
+    ctx.moveTo(rad * 1.2, 0);
+    ctx.lineTo(rad * 0.8, -rad * 0.3);
+    ctx.lineTo(rad * 0.8,  rad * 0.3);
+    ctx.closePath();
+    ctx.fillStyle = '#00d4aa';
+    ctx.fill();
+
+    ctx.restore();
+  }
+}
+
+// ── Canvas interactions ───────────────────────────────────────────────────────
+canvas.addEventListener('mousedown', (e) => {
+  if (e.button === 2) return;
+  isDragging  = true;
+  dragStartX  = e.clientX;
+  dragStartY  = e.clientY;
+  dragOffX    = viewOffX;
+  dragOffY    = viewOffY;
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (!isDragging) return;
+  const dx = e.clientX - dragStartX;
+  const dy = e.clientY - dragStartY;
+  if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+    viewOffX = dragOffX + dx;
+    viewOffY = dragOffY + dy;
+    draw();
+  }
+});
+
+canvas.addEventListener('mouseup', (e) => {
+  const moved = Math.abs(e.clientX - dragStartX) > 5 || Math.abs(e.clientY - dragStartY) > 5;
+  isDragging = false;
+  if (!moved && e.button === 0 && mapData) {
+    // Click → navigate
+    const cx = Math.floor((e.offsetX - viewOffX) / viewScale);
+    const cy = Math.floor((e.offsetY - viewOffY) / viewScale);
+    if (cx >= 0 && cx < mapData.width && cy >= 0 && cy < mapData.height) {
+      const gx = (cx - mapData.origin_x) * mapData.resolution;
+      const gy = (cy - mapData.origin_y) * mapData.resolution;
+      goalCell = { cx, cy };
+      send({ cmd: 'navigate', gx, gy });
+      addLog(`Navigate → (${gx.toFixed(2)}, ${gy.toFixed(2)}) m`, 'info');
+      draw();
+    }
+  }
+});
+
+canvas.addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  goalCell = null;
+  send({ cmd: 'stop' });
+  draw();
+});
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const factor = e.deltaY < 0 ? 1.15 : 0.87;
+  const mx = e.offsetX;
+  const my = e.offsetY;
+  viewOffX = mx + (viewOffX - mx) * factor;
+  viewOffY = my + (viewOffY - my) * factor;
+  viewScale = Math.max(1, Math.min(40, viewScale * factor));
+  draw();
+}, { passive: false });
+
+// ── D-pad manual control ──────────────────────────────────────────────────────
+const DPAD_INTERVAL = 80;  // ms
+let dpadTimer = null;
+
+function sendDpad() {
+  const spd = parseInt(document.getElementById('speed-slider').value);
+  const fwd = dpadActive['fwd'], bck = dpadActive['back'];
+  const lft = dpadActive['left'], rgt = dpadActive['right'];
+
+  if (!fwd && !bck && !lft && !rgt) {
+    send({ cmd: 'manual', left: 0, right: 0 });
+    return;
+  }
+  let L = 0, R = 0;
+  if (fwd)  { L += spd; R += spd; }
+  if (bck)  { L -= spd; R -= spd; }
+  if (lft)  { L -= spd * 0.7; R += spd * 0.7; }
+  if (rgt)  { L += spd * 0.7; R -= spd * 0.7; }
+  send({ cmd: 'manual', left: Math.round(L), right: Math.round(R) });
+}
+
+function dpadDown(key) {
+  if (robotState.mode === 'navigating' || robotState.mode === 'cleaning') return;
+  dpadActive[key] = true;
+  if (!dpadTimer) dpadTimer = setInterval(sendDpad, DPAD_INTERVAL);
+}
+function dpadUp(key) {
+  delete dpadActive[key];
+  if (Object.keys(dpadActive).length === 0) {
+    clearInterval(dpadTimer); dpadTimer = null;
+    send({ cmd: 'manual', left: 0, right: 0 });
+  }
+}
+
+function bindDpad(id, key) {
+  const el = document.getElementById(id);
+  el.addEventListener('mousedown',  () => dpadDown(key));
+  el.addEventListener('mouseup',    () => dpadUp(key));
+  el.addEventListener('mouseleave', () => dpadUp(key));
+  el.addEventListener('touchstart', (e) => { e.preventDefault(); dpadDown(key); }, { passive: false });
+  el.addEventListener('touchend',   () => dpadUp(key));
+}
+bindDpad('dpad-fwd',   'fwd');
+bindDpad('dpad-back',  'back');
+bindDpad('dpad-left',  'left');
+bindDpad('dpad-right', 'right');
+document.getElementById('dpad-stop').addEventListener('click', () => {
+  send({ cmd: 'stop' });
+  addLog('Manual stop', 'warn');
+});
+
+document.getElementById('speed-slider').addEventListener('input', (e) => {
+  document.getElementById('speed-val').textContent = e.target.value;
+});
+
+// ── Keyboard support ──────────────────────────────────────────────────────────
+const keyMap = { ArrowUp: 'fwd', ArrowDown: 'back', ArrowLeft: 'left', ArrowRight: 'right',
+                 w: 'fwd', s: 'back', a: 'left', d: 'right' };
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  const k = keyMap[e.key];
+  if (k && !dpadActive[k]) dpadDown(k);
+  if (e.key === ' ') { e.preventDefault(); send({ cmd: 'stop' }); }
+});
+document.addEventListener('keyup', (e) => {
+  const k = keyMap[e.key];
+  if (k) dpadUp(k);
+});
+
+// ── Sidebar buttons ───────────────────────────────────────────────────────────
+document.getElementById('btn-start-map').addEventListener('click', () => {
+  send({ cmd: 'start_mapping' });
+  addLog('Mapping started — drive robot around the area', 'info');
+});
+document.getElementById('btn-stop-map').addEventListener('click', () => {
+  send({ cmd: 'stop_mapping' });
+  showToast('Map saved ✓');
+  addLog('Map saved', 'info');
+});
+document.getElementById('btn-reset-pose').addEventListener('click', () => {
+  send({ cmd: 'reset_pose' });
+  addLog('Pose reset to origin', 'warn');
+});
+document.getElementById('btn-clear-map').addEventListener('click', () => {
+  if (!confirm('Clear the saved map and all cleaned data?')) return;
+  send({ cmd: 'clear_map' });
+  goalCell = null;
+  addLog('Map cleared', 'warn');
+});
+document.getElementById('btn-start-clean').addEventListener('click', () => {
+  send({ cmd: 'start_cleaning' });
+  addLog('Zigzag cleaning started', 'info');
+});
+document.getElementById('btn-stop-all').addEventListener('click', () => {
+  send({ cmd: 'stop' });
+  goalCell = null;
+  draw();
+  addLog('Stopped', 'warn');
+});
+
+// ── Utility: log ──────────────────────────────────────────────────────────────
+function addLog(msg, level = 'info') {
+  const list = document.getElementById('log-list');
+  const now  = new Date();
+  const t    = `${String(now.getHours()).padStart(2,'0')}:${String(now.getMinutes()).padStart(2,'0')}:${String(now.getSeconds()).padStart(2,'0')}`;
+  const entry = document.createElement('div');
+  entry.className = 'log-entry';
+  entry.innerHTML = `<span class="log-time">${t}</span><span class="log-${level}">${msg}</span>`;
+  list.prepend(entry);
+  // Keep max 40 entries
+  while (list.children.length > 40) list.removeChild(list.lastChild);
+}
+
+function showToast(msg, dur = 2500) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), dur);
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+resizeCanvas();
+connectWS();
+
+// Render loop even without WS (shows empty map)
+setInterval(draw, 100);
+</script>
+</body>
+</html>
